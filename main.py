@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import webapp2
 import cgi
+import webapp2
 
 
 def escape_html(s):
@@ -54,6 +54,16 @@ def valid_year(year):
             return year
 
 
+class Handler(webapp2.RedirectHandler):
+    def write(self, *args, **kwargs):
+        self.response.out.write(*args, **kwargs)
+
+
+class ThanksHandler(Handler):
+    def get(self):
+        self.write("Thanks! That's a totally valid day!")
+
+
 form = """<form method="post">
 What is your birthday?
   <label>
@@ -75,13 +85,13 @@ What is your birthday?
 """
 
 
-class MainPage(webapp2.RequestHandler):
+class MainPage(Handler):
 
     def write_form(self, error="", month="", day="", year=""):
-        self.response.out.write(form.format(error=error,
-                                            month=escape_html(month),
-                                            day=escape_html(day),
-                                            year=escape_html(year)))
+        self.write(form.format(error=error,
+                               month=escape_html(month),
+                               day=escape_html(day),
+                               year=escape_html(year)))
 
     def get(self):
         self.write_form()
@@ -101,10 +111,6 @@ class MainPage(webapp2.RequestHandler):
             self.redirect("/thanks")
 
 
-class ThanksHandler(webapp2.RedirectHandler):
-    def get(self):
-        self.response.out.write("Thanks! That's a totally valid day!")
-
-
-app = webapp2.WSGIApplication([ ('/', MainPage), ('/thans', ThanksHandler)],
+app = webapp2.WSGIApplication([('/', MainPage),
+                               ('/thanks', ThanksHandler)],
                               debug=True)
