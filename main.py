@@ -16,6 +16,7 @@ import jinja2
 import webapp2
 import os
 import string
+import re
 
 template_dir = os.path.join(os.path.dirname(__file__), 'templates')
 jinja_env = jinja2.Environment(
@@ -59,13 +60,80 @@ rot13 = string.maketrans(
 
 class Rot13(Handler):
     def get(self):
-        self.render("rot13.html")
+        self.render('rot13.html')
 
     def post(self):
         text = str(self.request.get('text'))
-        self.render("rot13.html", text=text.translate(rot13))
+        self.render('rot13.html', text=text.translate(rot13))
+
+
+class Welcome(Handler):
+    def get(self):
+        username = self.request.get('username')
+
+        if valid_username(username):
+            self.render('welcome.html', username=username)
+        else:
+            self.redirect('signup')
+
+
+USER_RE = re.compile(r"^[a-zA-Z0-9_-]{3,20}$")
+def valid_username(username):
+    return USER_RE.match(username)
+
+
+PASS_RE = re.compile(r"^.{3,20}$")
+def valid_password(password):
+    return PASS_RE.match(password)
+
+
+EMAIL_RE = re.compile(r"^[\S]+@[\S]+.[\S]+$")
+def valid_email(email):
+    return EMAIL_RE.match(email)
+
+
+class SignUp(Handler):
+    def get(self):
+        self.render('signup.html')
+
+    def post(self):
+        username = self.request.get('username')
+        password = self.request.get('password')
+        verify = self.request.get('verify')
+        email = self.request.get('email')
+
+        username_error = ""
+        password_error = ""
+        verify_error = ""
+        email_error = ""
+
+        if not valid_username(username):
+            username_error = "That's not a valid username."
+
+        if not valid_password(password):
+            password_error = "That wasn't a valid password."
+
+        if password != verify:
+            verify_error = "Your passwords didn't match"
+
+        if email and not valid_email(email):
+            email_error = "That's not a valid email."
+
+        if username_error or password_error or verify_error or email_error:
+            self.render('signup.html',
+                username=username,
+                username_error=username_error,
+                password_error=password_error,
+                verify_error=verify_error,
+                email_error=email_error
+            )
+        else:
+            self.redirect('welcome?username={}'.format(username))
 
 
 app = webapp2.WSGIApplication([('/', MainPage),
                                ('/fizzbuzz', FizzBuzz),
-                               ('/rot13', Rot13)], debug=True)
+                               ('/rot13', Rot13),
+                               ('/signup', SignUp),
+                               ('/welcome', Welcome)],
+                              debug=True)
