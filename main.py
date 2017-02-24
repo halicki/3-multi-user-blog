@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc.
+    # Copyright 2016 Google Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,31 +12,42 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import cgi
+import jinja2
 import webapp2
+import os
+
+template_dir = os.path.join(os.path.dirname(__file__), 'templates')
+jinja_env = jinja2.Environment(
+    loader=jinja2.FileSystemLoader(template_dir),
+    autoescape=True
+)
 
 
-def escape_html(s):
-    return cgi.escape(s, quote=True)
+def render_str(template, **kwargs):
+    template = jinja_env.get_template(template)
+    return template.render(**kwargs)
 
 
 class Handler(webapp2.RedirectHandler):
     def write(self, *args, **kwargs):
         self.response.out.write(*args, **kwargs)
 
-
-form_html = """
-<form>
-  <h2>Add a Food</h2>
-  <input type="text" name="food">
-  <button>Add</button>
-</form>
-"""
+    def render(self, template, **kwargs):
+        self.write(render_str(template, **kwargs))
 
 
 class MainPage(Handler):
     def get(self):
-        self.write(form_html)
+        items = [item for item in self.request.get_all("food") if len(item) > 0]
+        self.render("shopping_list.html", items=items)
 
+class FizzBuzz(Handler):
+    def get(self):
+        n = self.request.get('n')
+        if n and n.isdigit():
+            self.render("fizzbuzz.html", n=int(n))
+        else:
+            self.write("Provide nicer n.")
 
-app = webapp2.WSGIApplication([('/', MainPage)], debug=True)
+app = webapp2.WSGIApplication([('/', MainPage),
+                               ('/fizzbuzz', FizzBuzz)], debug=True)
