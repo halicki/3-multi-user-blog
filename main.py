@@ -15,6 +15,7 @@
 import jinja2
 import webapp2
 import os
+import string
 
 template_dir = os.path.join(os.path.dirname(__file__), 'templates')
 jinja_env = jinja2.Environment(
@@ -41,6 +42,7 @@ class MainPage(Handler):
         items = [item for item in self.request.get_all("food") if len(item) > 0]
         self.render("shopping_list.html", items=items)
 
+
 class FizzBuzz(Handler):
     def get(self):
         n = self.request.get('n')
@@ -49,5 +51,21 @@ class FizzBuzz(Handler):
         else:
             self.write("Provide nicer n.")
 
+
+rot13 = string.maketrans(
+    "ABCDEFGHIJKLMabcdefghijklmNOPQRSTUVWXYZnopqrstuvwxyz",
+    "NOPQRSTUVWXYZnopqrstuvwxyzABCDEFGHIJKLMabcdefghijklm")
+
+
+class Rot13(Handler):
+    def get(self):
+        self.render("rot13.html")
+
+    def post(self):
+        text = str(self.request.get('text'))
+        self.render("rot13.html", text=text.translate(rot13))
+
+
 app = webapp2.WSGIApplication([('/', MainPage),
-                               ('/fizzbuzz', FizzBuzz)], debug=True)
+                               ('/fizzbuzz', FizzBuzz),
+                               ('/rot13', Rot13)], debug=True)
