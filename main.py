@@ -1,4 +1,4 @@
-    # Copyright 2016 Google Inc.
+# Copyright 2016 Google Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -165,8 +165,50 @@ class MainPage(Handler):
                               error='We need both title and art!')
 
 
+class BlogPost(db.Model):
+    title = db.StringProperty(required=True)
+    content = db.TextProperty(required=True)
+    created = db.DateTimeProperty(auto_now_add=True)
+
+
+class Blog(Handler):
+    def get(self):
+        blog_posts = db.GqlQuery('SELECT * FROM BlogPost '
+                                'ORDER BY created DESC '
+                                'LIMIT 10')
+        self.render('blog.html', blog_posts=blog_posts)
+
+
+class Post(Handler):
+    def get(self, blog_post_id):
+        blog_post = BlogPost.get_by_id(int(blog_post_id))
+        self.render('post.html', blog_post=blog_post)
+
+
+class NewPost(Handler):
+    def render_new_post(self, title="", content="", error=""):
+        self.render('newpost.html', title=title, content=content, error=error)
+
+    def get(self):
+        self.render_new_post()
+
+    def post(self):
+        title = self.request.get('subject')
+        content = self.request.get('content')
+
+        if title and content:
+            blog_post = BlogPost(title=title, content=content)
+            blog_post.put()
+            self.redirect(str(blog_post.key().id()))
+        else:
+            self.render_new_post(title, content, "Provide both, the title and content")
+
+
 app = webapp2.WSGIApplication([
     ('/', MainPage),
+    ('/blog', Blog),
+    ('/blog/newpost', NewPost),
+    ('/blog/(\d+)', Post),
     ('/shoppinglist', ShoppingList),
     ('/fizzbuzz', FizzBuzz),
     ('/rot13', Rot13),

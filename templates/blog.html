@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+
+{% block content %}
+  {% if blog_posts %}
+    {% for bp in blog_posts %}
+      <h2>{{ bp.title }}</h2>
+      <pre>{{ bp.content }}</pre>
+    {% endfor %}
+  {% endif %}
+{% endblock %}
