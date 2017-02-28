@@ -3,5 +3,6 @@ Jinja2==2.9.5
 MarkupSafe==0.23
 packaging==16.8
 pyparsing==2.1.10
+python-appengine==1.9.15
 six==1.10.0
 webapp2==2.5.2

@@ -17,6 +17,9 @@ import webapp2
 import os
 import string
 import re
+import time
+
+from google.appengine.ext import db
 
 template_dir = os.path.join(os.path.dirname(__file__), 'templates')
 jinja_env = jinja2.Environment(
@@ -38,7 +41,7 @@ class Handler(webapp2.RedirectHandler):
         self.write(render_str(template, **kwargs))
 
 
-class MainPage(Handler):
+class ShoppingList(Handler):
     def get(self):
         items = [item for item in self.request.get_all("food") if len(item) > 0]
         self.render("shopping_list.html", items=items)
@@ -133,9 +136,40 @@ class SignUp(Handler):
             self.redirect('welcome?username={}'.format(username))
 
 
-app = webapp2.WSGIApplication([('/', MainPage),
-                               ('/fizzbuzz', FizzBuzz),
-                               ('/rot13', Rot13),
-                               ('/signup', SignUp),
-                               ('/welcome', Welcome)],
-                              debug=True)
+class Art(db.Model):
+    title = db.StringProperty(required=True)
+    art = db.TextProperty(required=True)
+    created = db.DateTimeProperty(auto_now_add=True)
+
+
+class MainPage(Handler):
+    def render_front(self, title="", art="", error=""):
+        arts = db.GqlQuery('SELECT * FROM Art '
+                           'ORDER BY created DESC')
+        self.render('front.html', title=title, art=art, error=error, arts=arts)
+
+    def get(self):
+        self.render_front()
+
+    def post(self):
+        title = self.request.get('title')
+        art = self.request.get('art')
+
+        if title and art:
+            a = Art(title=title, art=art)
+            a.put()
+            time.sleep(0.1)
+            self.redirect('/')
+        else:
+            self.render_front(title=title, art=art,
+                              error='We need both title and art!')
+
+
+app = webapp2.WSGIApplication([
+    ('/', MainPage),
+    ('/shoppinglist', ShoppingList),
+    ('/fizzbuzz', FizzBuzz),
+    ('/rot13', Rot13),
+    ('/signup', SignUp),
+    ('/welcome', Welcome)],
+    debug=True)
