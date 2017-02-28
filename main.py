@@ -204,11 +204,30 @@ class NewPost(Handler):
             self.render_new_post(title, content, "Provide both, the title and content")
 
 
+class VisitsCounter(Handler):
+    def get(self):
+        self.response.headers['Content-Type'] = 'text/plain'
+        visits = self.request.cookies.get('visits', '0')
+        if visits.isdigit():
+            visits = int(visits) + 1
+        else:
+            visits = 0
+
+        self.response.headers.add_header('Set-Cookie', 'visits={}'.format(visits))
+
+        if visits > 10:
+            self.write("you are the best@!")
+        else:
+            self.write("You've been here {} times.".format(visits))
+
+
 app = webapp2.WSGIApplication([
     ('/', MainPage),
+    ('/visits-counter', VisitsCounter),
     ('/blog', Blog),
     ('/blog/newpost', NewPost),
     ('/blog/(\d+)', Post),
+    ('/shoppinglist', ShoppingList),
     ('/shoppinglist', ShoppingList),
     ('/fizzbuzz', FizzBuzz),
     ('/rot13', Rot13),
