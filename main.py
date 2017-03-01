@@ -15,9 +15,12 @@
 import jinja2
 import webapp2
 import os
-import string
 import re
 import time
+import hmac
+import hashlib
+import hashing
+
 
 from google.appengine.ext import db
 
@@ -47,39 +50,6 @@ class ShoppingList(Handler):
         self.render("shopping_list.html", items=items)
 
 
-class FizzBuzz(Handler):
-    def get(self):
-        n = self.request.get('n')
-        if n and n.isdigit():
-            self.render("fizzbuzz.html", n=int(n))
-        else:
-            self.write("Provide nicer n.")
-
-
-rot13 = string.maketrans(
-    "ABCDEFGHIJKLMabcdefghijklmNOPQRSTUVWXYZnopqrstuvwxyz",
-    "NOPQRSTUVWXYZnopqrstuvwxyzABCDEFGHIJKLMabcdefghijklm")
-
-
-class Rot13(Handler):
-    def get(self):
-        self.render('rot13.html')
-
-    def post(self):
-        text = str(self.request.get('text'))
-        self.render('rot13.html', text=text.translate(rot13))
-
-
-class Welcome(Handler):
-    def get(self):
-        username = self.request.get('username')
-
-        if valid_username(username):
-            self.render('welcome.html', username=username)
-        else:
-            self.redirect('signup')
-
-
 USER_RE = re.compile(r"^[a-zA-Z0-9_-]{3,20}$")
 EMAIL_RE = re.compile(r"^[\S]+@[\S]+.[\S]+$")
 PASS_RE = re.compile(r"^.{3,20}$")
@@ -95,45 +65,6 @@ def valid_password(password):
 
 def valid_email(email):
     return email and EMAIL_RE.match(email)
-
-
-class SignUp(Handler):
-    def get(self):
-        self.render('signup.html')
-
-    def post(self):
-        username = self.request.get('username')
-        password = self.request.get('password')
-        verify = self.request.get('verify')
-        email = self.request.get('email')
-
-        username_error = ""
-        password_error = ""
-        verify_error = ""
-        email_error = ""
-
-        if not valid_username(username):
-            username_error = "That's not a valid username."
-
-        if not valid_password(password):
-            password_error = "That wasn't a valid password."
-
-        if password != verify:
-            verify_error = "Your passwords didn't match"
-
-        if email and not valid_email(email):
-            email_error = "That's not a valid email."
-
-        if username_error or password_error or verify_error or email_error:
-            self.render('signup.html',
-                        username=username,
-                        username_error=username_error,
-                        password_error=password_error,
-                        verify_error=verify_error,
-                        email_error=email_error
-                        )
-        else:
-            self.redirect('welcome?username={}'.format(username))
 
 
 class Art(db.Model):
@@ -204,33 +135,109 @@ class NewPost(Handler):
             self.render_new_post(title, content, "Provide both, the title and content")
 
 
+def hash_str(s):
+    return hmac.new("secret", s, hashlib.sha256).hexdigest()
+
+
+def make_secure_val(s):
+    return "{}|{}".format(s, hash_str(s))
+
+
+def check_secure_val(h):
+    val = h.split('|', 1)[0]
+    if make_secure_val(val) == h:
+        return val
+
+
 class VisitsCounter(Handler):
     def get(self):
         self.response.headers['Content-Type'] = 'text/plain'
-        visits = self.request.cookies.get('visits', '0')
-        if visits.isdigit():
-            visits = int(visits) + 1
-        else:
-            visits = 0
+        visits = 0
+        visits_cookie_val = self.request.cookies.get('visits', '0,0')
+        if visits_cookie_val:
+            print 'visits cookie val is set'
+            cookie_val = check_secure_val(visits_cookie_val)
+            if cookie_val:
+                visits = int(cookie_val)
 
-        self.response.headers.add_header('Set-Cookie', 'visits={}'.format(visits))
+        visits += 1
+        new_cookie_val = make_secure_val(str(visits))
 
-        if visits > 10:
-            self.write("you are the best@!")
+        self.response.headers.add_header('Set-Cookie', 'visits={}'.format(new_cookie_val))
+
+        if visits > 100:
+            self.write("you are the best!")
         else:
             self.write("You've been here {} times.".format(visits))
 
 
+class User(db.Model):
+    username = db.StringProperty(required=True,)
+    hash = db.StringProperty(required=True)
+    registered_datetime = db.DateTimeProperty(auto_now_add=True)
+
+    @staticmethod
+    def exists(username):
+        return bool(db.GqlQuery("select * from User where username = :1", username).count())
+
+
+class SignUp(Handler):
+    def get(self):
+        self.render('signup.html')
+
+    def post(self):
+        username = self.request.get('username')
+        password = self.request.get('password')
+        verify = self.request.get('verify')
+        email = self.request.get('email')
+
+        parameters = {username: username, email: email}
+        errors = {}
+
+        if not valid_username(username):
+            errors['username_error']= "That's not a valid username."
+        elif User.exists(username):
+            errors['username_error'] = "That name is already used."
+
+        if not valid_password(password):
+            errors['password_error'] = "That wasn't a valid password."
+
+        if password != verify:
+            errors['verify_error'] = "Your passwords didn't match"
+
+        if email and not valid_email(email):
+            errors['email_error'] = "That's not a valid email."
+
+        if errors:
+            parameters.update(errors)
+            self.render('signup.html', **parameters)
+        else:
+            user = User(username=username, hash=hashing.make_pw_hash(username, password)).put()
+            self.response.headers.add_header('Set-Cookie', 'user_id={}; Path=/'.format(
+                hashing.make_secure_val(str(user.id()))
+            ))
+            self.redirect('welcome')
+
+
+class Welcome(Handler):
+    def get(self):
+        user_id = self.request.cookies.get('user_id')
+        if not user_id:
+            self.redirect('signup')
+
+        user_id = hashing.check_secure_val(user_id)
+        if not user_id:
+            self.redirect('signup')
+
+        self.render('welcome.html', username=User.get_by_id(int(user_id)).username)
+
+
 app = webapp2.WSGIApplication([
     ('/', MainPage),
-    ('/visits-counter', VisitsCounter),
     ('/blog', Blog),
+    ('/blog/signup', SignUp),
     ('/blog/newpost', NewPost),
     ('/blog/(\d+)', Post),
-    ('/shoppinglist', ShoppingList),
-    ('/shoppinglist', ShoppingList),
-    ('/fizzbuzz', FizzBuzz),
-    ('/rot13', Rot13),
-    ('/signup', SignUp),
-    ('/welcome', Welcome)],
+    ('/blog/welcome', Welcome),
+    ('/shoppinglist', ShoppingList)],
     debug=True)
