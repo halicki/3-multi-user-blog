@@ -23,6 +23,7 @@ import hashing
 
 
 from google.appengine.ext import db
+from google.appengine.api.datastore_types import datastore_errors
 
 template_dir = os.path.join(os.path.dirname(__file__), 'templates')
 jinja_env = jinja2.Environment(
@@ -36,7 +37,7 @@ def render_str(template, **kwargs):
     return template.render(**kwargs)
 
 
-class Handler(webapp2.RedirectHandler):
+class Handler(webapp2.RequestHandler):
     def write(self, *args, **kwargs):
         self.response.out.write(*args, **kwargs)
 
@@ -172,13 +173,9 @@ class VisitsCounter(Handler):
 
 
 class User(db.Model):
-    username = db.StringProperty(required=True,)
     hash = db.StringProperty(required=True)
+    email = db.EmailProperty()
     registered_datetime = db.DateTimeProperty(auto_now_add=True)
-
-    @staticmethod
-    def exists(username):
-        return bool(db.GqlQuery("select * from User where username = :1", username).count())
 
 
 class SignUp(Handler):
@@ -190,13 +187,11 @@ class SignUp(Handler):
         password = self.request.get('password')
         verify = self.request.get('verify')
         email = self.request.get('email')
-
-        parameters = {username: username, email: email}
         errors = {}
 
         if not valid_username(username):
             errors['username_error']= "That's not a valid username."
-        elif User.exists(username):
+        elif User.get_by_key_name(username):
             errors['username_error'] = "That name is already used."
 
         if not valid_password(password):
@@ -209,14 +204,49 @@ class SignUp(Handler):
             errors['email_error'] = "That's not a valid email."
 
         if errors:
-            parameters.update(errors)
-            self.render('signup.html', **parameters)
+            errors.update(username=username, email=email)
+            self.render('signup.html', **errors)
         else:
-            user = User(username=username, hash=hashing.make_pw_hash(username, password)).put()
+            User(key_name=username,
+                 hash=hashing.make_pw_hash(username, password),
+                 ).put()
             self.response.headers.add_header('Set-Cookie', 'user_id={}; Path=/'.format(
-                hashing.make_secure_val(str(user.id()))
+                hashing.make_secure_val(username)
             ))
             self.redirect('welcome')
+
+
+class Login(Handler):
+    def get(self):
+        self.render('login.html')
+
+    def post(self):
+        username = self.request.get('username')
+        password = self.request.get('password')
+
+        user = User.get_by_key_name(username)
+        errors = {}
+
+        if not user:
+            errors['username_error'] = "No such user."
+
+        if not hashing.valid_pw(username, password, user.hash):
+            errors['password_error'] = "Invalid password."
+
+        if errors:
+            errors.update(username=username)
+            self.render('login.html', **errors)
+        else:
+            self.response.headers.add_header('Set-Cookie', 'user_id={}; Path=/'.format(
+                hashing.make_secure_val(username)
+            ))
+            self.redirect('welcome')
+
+
+class Logout(Handler):
+    def get(self):
+        self.response.headers.add_header('Set-Cookie', 'user_id=; Path=/')
+        self.redirect('signup')
 
 
 class Welcome(Handler):
@@ -229,15 +259,17 @@ class Welcome(Handler):
         if not user_id:
             self.redirect('signup')
 
-        self.render('welcome.html', username=User.get_by_id(int(user_id)).username)
+        self.render('welcome.html', username=user_id)
 
 
 app = webapp2.WSGIApplication([
     ('/', MainPage),
-    ('/blog', Blog),
+    ('/blog/?', Blog),
     ('/blog/signup', SignUp),
     ('/blog/newpost', NewPost),
     ('/blog/(\d+)', Post),
     ('/blog/welcome', Welcome),
+    ('/blog/login', Login),
+    ('/blog/logout', Logout),
     ('/shoppinglist', ShoppingList)],
     debug=True)

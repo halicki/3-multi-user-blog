@@ -26,13 +26,10 @@ def make_pw_hash(name, pw, salt=None):
     if not salt:
         salt = make_salt()
     name_pw_hash = hashlib.sha256(name + pw + salt).hexdigest()
-    return '%s,%s' % (name_pw_hash, salt)
+    return '%s|%s' % (name_pw_hash, salt)
 
 
 def valid_pw(name, pw, h):
-    db_hash, salt = h.split(',')
+    db_hash, salt = h.split('|')
     computed_hash = make_pw_hash(name, pw, salt)
-    return db_hash == computed_hash
-
-
-
+    return h == computed_hash
