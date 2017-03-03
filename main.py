@@ -16,124 +16,18 @@ import jinja2
 import webapp2
 import os
 import re
-import time
-import hmac
 import hashlib
-import hashing
-
-
+import hmac
+import random
+import string
 from google.appengine.ext import db
-from google.appengine.api.datastore_types import datastore_errors
+
 
 template_dir = os.path.join(os.path.dirname(__file__), 'templates')
 jinja_env = jinja2.Environment(
     loader=jinja2.FileSystemLoader(template_dir),
     autoescape=True
 )
-
-
-def render_str(template, **kwargs):
-    template = jinja_env.get_template(template)
-    return template.render(**kwargs)
-
-
-class Handler(webapp2.RequestHandler):
-    def write(self, *args, **kwargs):
-        self.response.out.write(*args, **kwargs)
-
-    def render(self, template, **kwargs):
-        self.write(render_str(template, **kwargs))
-
-
-class ShoppingList(Handler):
-    def get(self):
-        items = [item for item in self.request.get_all("food") if len(item) > 0]
-        self.render("shopping_list.html", items=items)
-
-
-USER_RE = re.compile(r"^[a-zA-Z0-9_-]{3,20}$")
-EMAIL_RE = re.compile(r"^[\S]+@[\S]+.[\S]+$")
-PASS_RE = re.compile(r"^.{3,20}$")
-
-
-def valid_username(username):
-    return username and USER_RE.match(username)
-
-
-def valid_password(password):
-    return password and PASS_RE.match(password)
-
-
-def valid_email(email):
-    return email and EMAIL_RE.match(email)
-
-
-class Art(db.Model):
-    title = db.StringProperty(required=True)
-    art = db.TextProperty(required=True)
-    created = db.DateTimeProperty(auto_now_add=True)
-
-
-class MainPage(Handler):
-    def render_front(self, title="", art="", error=""):
-        arts = db.GqlQuery('SELECT * FROM Art '
-                           'ORDER BY created DESC')
-        self.render('front.html', title=title, art=art, error=error, arts=arts)
-
-    def get(self):
-        self.render_front()
-
-    def post(self):
-        title = self.request.get('title')
-        art = self.request.get('art')
-
-        if title and art:
-            a = Art(title=title, art=art)
-            a.put()
-            time.sleep(0.1)
-            self.redirect('/')
-        else:
-            self.render_front(title=title, art=art,
-                              error='We need both title and art!')
-
-
-class BlogPost(db.Model):
-    title = db.StringProperty(required=True)
-    content = db.TextProperty(required=True)
-    created = db.DateTimeProperty(auto_now_add=True)
-
-
-class Blog(Handler):
-    def get(self):
-        blog_posts = db.GqlQuery('SELECT * FROM BlogPost '
-                                'ORDER BY created DESC '
-                                'LIMIT 10')
-        self.render('blog.html', blog_posts=blog_posts)
-
-
-class Post(Handler):
-    def get(self, blog_post_id):
-        blog_post = BlogPost.get_by_id(int(blog_post_id))
-        self.render('post.html', blog_post=blog_post)
-
-
-class NewPost(Handler):
-    def render_new_post(self, title="", content="", error=""):
-        self.render('newpost.html', title=title, content=content, error=error)
-
-    def get(self):
-        self.render_new_post()
-
-    def post(self):
-        title = self.request.get('subject')
-        content = self.request.get('content')
-
-        if title and content:
-            blog_post = BlogPost(title=title, content=content)
-            blog_post.put()
-            self.redirect(str(blog_post.key().id()))
-        else:
-            self.render_new_post(title, content, "Provide both, the title and content")
 
 
 def hash_str(s):
@@ -150,35 +44,123 @@ def check_secure_val(h):
         return val
 
 
-class VisitsCounter(Handler):
+def make_salt():
+    return ''.join(random.choice(string.ascii_letters) for _ in xrange(5))
+
+
+def make_pw_hash(name, pw, salt=None):
+    if not salt:
+        salt = make_salt()
+    name_pw_hash = hashlib.sha256(name + pw + salt).hexdigest()
+    return '%s|%s' % (name_pw_hash, salt)
+
+
+def valid_pw(name, pw, h):
+    db_hash, salt = h.split('|')
+    computed_hash = make_pw_hash(name, pw, salt)
+    return h == computed_hash
+
+
+USER_RE = re.compile(r"^[a-zA-Z0-9_-]{3,20}$")
+def valid_username(username):
+    return username and USER_RE.match(username)
+
+EMAIL_RE = re.compile(r"^[\S]+@[\S]+.[\S]+$")
+def valid_password(password):
+    return password and PASS_RE.match(password)
+
+PASS_RE = re.compile(r"^.{3,20}$")
+def valid_email(email):
+    return email and EMAIL_RE.match(email)
+
+
+class Handler(webapp2.RequestHandler):
+
+    @staticmethod
+    def render_str(template, **kwargs):
+        template = jinja_env.get_template(template)
+        return template.render(**kwargs)
+
+    def write(self, *args, **kwargs):
+        self.response.out.write(*args, **kwargs)
+
+    def render(self, template, **kwargs):
+        self.write(self.render_str(template, **kwargs))
+
+    def read_cookie(self, name):
+        cookie = self.request.cookies.get(name)
+        return cookie and check_secure_val(cookie)
+
+    def clear_cookie(self, name):
+        self.response.headers.add_header('Set-Cookie', '{}=;'.format(name))
+
+    def set_cookie(self, name, value, path=None):
+        value = make_secure_val(value)
+        path = path or '/'
+        self.response.headers.add_header(
+            'Set-Cookie', '{0}={1}; Path={2}'.format(name, value, path))
+
+    def initialize(self, *a, **kw):
+        webapp2.RequestHandler.initialize(self, *a, **kw)
+        uid = self.read_cookie('user_id')
+        self.logged_user = uid and User.get_by_id(int(uid))
+
+    def login_user(self, user_key):
+        self.set_cookie('user_id', str(user_key.id()))
+
+    def logout_user(self):
+        self.clear_cookie('user_id')
+
+
+class BlogPost(db.Model):
+    title = db.StringProperty(required=True)
+    content = db.TextProperty(required=True)
+    created = db.DateTimeProperty(auto_now_add=True)
+
+
+class PostHandler(Handler):
+    def get(self, blog_post_id):
+        blog_post = BlogPost.get_by_id(int(blog_post_id))
+        self.render('post.html', blog_post=blog_post)
+
+
+class NewPostHandler(Handler):
+    def render_new_post(self, title="", content="", error=""):
+        self.render('newpost.html', title=title, content=content,
+                    error=error)
+
     def get(self):
-        self.response.headers['Content-Type'] = 'text/plain'
-        visits = 0
-        visits_cookie_val = self.request.cookies.get('visits', '0,0')
-        if visits_cookie_val:
-            print 'visits cookie val is set'
-            cookie_val = check_secure_val(visits_cookie_val)
-            if cookie_val:
-                visits = int(cookie_val)
+        self.render_new_post()
 
-        visits += 1
-        new_cookie_val = make_secure_val(str(visits))
+    def post(self):
+        title = self.request.get('subject')
+        content = self.request.get('content')
 
-        self.response.headers.add_header('Set-Cookie', 'visits={}'.format(new_cookie_val))
-
-        if visits > 100:
-            self.write("you are the best!")
+        if title and content:
+            blog_post = BlogPost(title=title, content=content)
+            blog_post.put()
+            self.redirect(str(blog_post.key().id()))
         else:
-            self.write("You've been here {} times.".format(visits))
+            self.render_new_post(title, content,
+                                 "Provide both, the title and content")
 
 
 class User(db.Model):
-    hash = db.StringProperty(required=True)
+    username = db.StringProperty(required=True)
+    pw_hash = db.StringProperty(required=True)
     email = db.EmailProperty()
     registered_datetime = db.DateTimeProperty(auto_now_add=True)
 
 
-class SignUp(Handler):
+class MainHandler(Handler):
+    def get(self):
+        blog_posts = db.GqlQuery('SELECT * FROM BlogPost '
+                                'ORDER BY created DESC '
+                                'LIMIT 10')
+        self.render('blog.html', blog_posts=blog_posts)
+
+
+class SignUpHandler(Handler):
     def get(self):
         self.render('signup.html')
 
@@ -187,89 +169,87 @@ class SignUp(Handler):
         password = self.request.get('password')
         verify = self.request.get('verify')
         email = self.request.get('email')
-        errors = {}
+        params = {'username': username, 'email': email}
+        error = False
 
         if not valid_username(username):
-            errors['username_error']= "That's not a valid username."
-        elif User.get_by_key_name(username):
-            errors['username_error'] = "That name is already used."
+            params['username_error']= "That's not a valid username."
+            error = True
+        elif User.all().filter('username =', username).get():
+            params['username_error'] = "That name is already used."
+            error = True
 
         if not valid_password(password):
-            errors['password_error'] = "That wasn't a valid password."
-
+            params['password_error'] = "That wasn't a valid password."
+            error = True
         if password != verify:
-            errors['verify_error'] = "Your passwords didn't match"
+            params['verify_error'] = "Your passwords didn't match"
+            error = True
 
         if email and not valid_email(email):
-            errors['email_error'] = "That's not a valid email."
+            params['email_error'] = "That's not a valid email."
+            error = True
 
-        if errors:
-            errors.update(username=username, email=email)
-            self.render('signup.html', **errors)
+        if error:
+            self.render('signup.html', **params)
         else:
-            User(key_name=username,
-                 hash=hashing.make_pw_hash(username, password),
-                 ).put()
-            self.response.headers.add_header('Set-Cookie', 'user_id={}; Path=/'.format(
-                hashing.make_secure_val(username)
-            ))
+            user_key = User(username=username, email=email or None,
+                            pw_hash=make_pw_hash(username, password)).put()
+            self.login_user(user_key)
             self.redirect('welcome')
 
 
-class Login(Handler):
+class LoginHandler(Handler):
+    def render_login(self, **kwargs):
+        self.render('login.html', **kwargs)
+
     def get(self):
-        self.render('login.html')
+        self.render_login()
 
     def post(self):
         username = self.request.get('username')
         password = self.request.get('password')
-
-        user = User.get_by_key_name(username)
-        errors = {}
+        params = {username: username}
+        user = User.all().filter('username =', username).get()
+        error = False
 
         if not user:
-            errors['username_error'] = "No such user."
+            params['username_error'] = "No such user."
+            error = True
+        elif not password:
+            params['password_error'] = "Please provide password."
+            error = True
+        elif not valid_pw(username, password, user.pw_hash):
+            params['password_error'] = "Invalid password."
+            error = True
 
-        if not hashing.valid_pw(username, password, user.hash):
-            errors['password_error'] = "Invalid password."
-
-        if errors:
-            errors.update(username=username)
-            self.render('login.html', **errors)
+        if error:
+            self.render_login(**params)
         else:
-            self.response.headers.add_header('Set-Cookie', 'user_id={}; Path=/'.format(
-                hashing.make_secure_val(username)
-            ))
+            self.login_user(user.key())
             self.redirect('welcome')
 
 
-class Logout(Handler):
+class LogoutHandler(Handler):
     def get(self):
-        self.response.headers.add_header('Set-Cookie', 'user_id=; Path=/')
+        self.logout_user()
         self.redirect('signup')
 
 
-class Welcome(Handler):
+class WelcomeHandler(Handler):
     def get(self):
-        user_id = self.request.cookies.get('user_id')
-        if not user_id:
+        if not self.logged_user:
             self.redirect('signup')
-
-        user_id = hashing.check_secure_val(user_id)
-        if not user_id:
-            self.redirect('signup')
-
-        self.render('welcome.html', username=user_id)
+        else:
+            self.render('welcome.html', username=self.logged_user.username)
 
 
 app = webapp2.WSGIApplication([
-    ('/', MainPage),
-    ('/blog/?', Blog),
-    ('/blog/signup', SignUp),
-    ('/blog/newpost', NewPost),
-    ('/blog/(\d+)', Post),
-    ('/blog/welcome', Welcome),
-    ('/blog/login', Login),
-    ('/blog/logout', Logout),
-    ('/shoppinglist', ShoppingList)],
+    ('/?', MainHandler),
+    ('/signup', SignUpHandler),
+    ('/login', LoginHandler),
+    ('/logout', LogoutHandler),
+    ('/welcome', WelcomeHandler),
+    ('/newpost', NewPostHandler),
+    ('/(\d+)', PostHandler)],
     debug=True)

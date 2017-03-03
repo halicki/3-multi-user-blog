@@ -1,12 +1,7 @@
+{% extends "base.html" %}
 
-<!DOCTYPE html>
+{% block title %}Welcome{% if username %}, {{ username }}{% endif %}!{% endblock %}
 
-<html>
-  <head>
-    <title>Unit 2 Signup</title>
-  </head>
-
-  <body>
-    <h2>Welcome{% if username %}, {{ username }}{% endif %}!</h2>
-  </body>
-</html>
+{% block content %}
+<h2>Welcome{% if username %}, {{ username }}{% endif %}!</h2>
+{% endblock %}
