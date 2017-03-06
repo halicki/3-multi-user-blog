@@ -30,6 +30,51 @@ jinja_env = jinja2.Environment(
 )
 
 
+class Handler(webapp2.RequestHandler):
+
+    @staticmethod
+    def render_str(template, **kwargs):
+        template = jinja_env.get_template(template)
+        return template.render(**kwargs)
+
+    def write(self, *args, **kwargs):
+        self.response.out.write(*args, **kwargs)
+
+    def render(self, template, **kwargs):
+        self.write(self.render_str(template, **kwargs))
+
+    def read_cookie(self, name):
+        cookie = self.request.cookies.get(name)
+        return cookie and check_secure_val(cookie)
+
+    def clear_cookie(self, name):
+        self.response.headers.add_header('Set-Cookie', '{}=;'.format(name))
+
+    def set_cookie(self, name, value, path=None):
+        value = make_secure_val(value)
+        path = path or '/'
+        self.response.headers.add_header(
+            'Set-Cookie', '{0}={1}; Path={2}'.format(name, value, path))
+
+    def initialize(self, *a, **kw):
+        webapp2.RequestHandler.initialize(self, *a, **kw)
+        uid = self.read_cookie('user_id')
+        self.logged_user = uid and User.get_by_id(int(uid))
+
+    def login_user(self, user_key):
+        self.set_cookie('user_id', str(user_key.id()))
+
+    def logout_user(self):
+        self.clear_cookie('user_id')
+
+
+class User(db.Model):
+    username = db.StringProperty(required=True)
+    pw_hash = db.StringProperty(required=True)
+    email = db.EmailProperty()
+    registered_datetime = db.DateTimeProperty(auto_now_add=True)
+
+
 def hash_str(s):
     return hmac.new("secret", s, hashlib.sha256).hexdigest()
 
@@ -72,92 +117,6 @@ def valid_password(password):
 PASS_RE = re.compile(r"^.{3,20}$")
 def valid_email(email):
     return email and EMAIL_RE.match(email)
-
-
-class Handler(webapp2.RequestHandler):
-
-    @staticmethod
-    def render_str(template, **kwargs):
-        template = jinja_env.get_template(template)
-        return template.render(**kwargs)
-
-    def write(self, *args, **kwargs):
-        self.response.out.write(*args, **kwargs)
-
-    def render(self, template, **kwargs):
-        self.write(self.render_str(template, **kwargs))
-
-    def read_cookie(self, name):
-        cookie = self.request.cookies.get(name)
-        return cookie and check_secure_val(cookie)
-
-    def clear_cookie(self, name):
-        self.response.headers.add_header('Set-Cookie', '{}=;'.format(name))
-
-    def set_cookie(self, name, value, path=None):
-        value = make_secure_val(value)
-        path = path or '/'
-        self.response.headers.add_header(
-            'Set-Cookie', '{0}={1}; Path={2}'.format(name, value, path))
-
-    def initialize(self, *a, **kw):
-        webapp2.RequestHandler.initialize(self, *a, **kw)
-        uid = self.read_cookie('user_id')
-        self.logged_user = uid and User.get_by_id(int(uid))
-
-    def login_user(self, user_key):
-        self.set_cookie('user_id', str(user_key.id()))
-
-    def logout_user(self):
-        self.clear_cookie('user_id')
-
-
-class BlogPost(db.Model):
-    title = db.StringProperty(required=True)
-    content = db.TextProperty(required=True)
-    created = db.DateTimeProperty(auto_now_add=True)
-
-
-class PostHandler(Handler):
-    def get(self, blog_post_id):
-        blog_post = BlogPost.get_by_id(int(blog_post_id))
-        self.render('post.html', blog_post=blog_post)
-
-
-class NewPostHandler(Handler):
-    def render_new_post(self, title="", content="", error=""):
-        self.render('newpost.html', title=title, content=content,
-                    error=error)
-
-    def get(self):
-        self.render_new_post()
-
-    def post(self):
-        title = self.request.get('subject')
-        content = self.request.get('content')
-
-        if title and content:
-            blog_post = BlogPost(title=title, content=content)
-            blog_post.put()
-            self.redirect(str(blog_post.key().id()))
-        else:
-            self.render_new_post(title, content,
-                                 "Provide both, the title and content")
-
-
-class User(db.Model):
-    username = db.StringProperty(required=True)
-    pw_hash = db.StringProperty(required=True)
-    email = db.EmailProperty()
-    registered_datetime = db.DateTimeProperty(auto_now_add=True)
-
-
-class MainHandler(Handler):
-    def get(self):
-        blog_posts = db.GqlQuery('SELECT * FROM BlogPost '
-                                'ORDER BY created DESC '
-                                'LIMIT 10')
-        self.render('blog.html', blog_posts=blog_posts)
 
 
 class SignUpHandler(Handler):
@@ -244,6 +203,54 @@ class WelcomeHandler(Handler):
             self.render('welcome.html', username=self.logged_user.username)
 
 
+class BlogPost(db.Model):
+    author = db.ReferenceProperty(User)
+    title = db.StringProperty(required=True)
+    content = db.TextProperty(required=True)
+    created = db.DateTimeProperty(auto_now_add=True)
+
+    def render(self):
+        return jinja_env.get_template("blogpost.html").render(bp=self)
+
+
+class MainHandler(Handler):
+    def get(self):
+        blog_posts = db.GqlQuery('SELECT * FROM BlogPost '
+                                'ORDER BY created DESC '
+                                'LIMIT 10')
+        self.render('main.html', blog_posts=blog_posts)
+
+
+class PostHandler(Handler):
+    def get(self, blog_post_id):
+        blog_post = BlogPost.get_by_id(int(blog_post_id))
+        self.render('post.html', blog_post=blog_post)
+
+
+class NewPostHandler(Handler):
+    def render_new_post(self, title="", content="", error=""):
+        self.render('newpost.html', title=title, content=content,
+                    error=error)
+
+    def get(self):
+        if not self.logged_user:
+            self.redirect("signup")
+        self.render_new_post()
+
+    def post(self):
+        title = self.request.get('subject')
+        content = self.request.get('content')
+
+        if title and content:
+            blog_post = BlogPost(title=title, content=content,
+                                 author=self.logged_user.key())
+            blog_post.put()
+            self.redirect(str(blog_post.key().id()))
+        else:
+            self.render_new_post(title, content,
+                                 "Provide both, the title and content")
+
+
 app = webapp2.WSGIApplication([
     ('/?', MainHandler),
     ('/signup', SignUpHandler),
@@ -251,5 +258,4 @@ app = webapp2.WSGIApplication([
     ('/logout', LogoutHandler),
     ('/welcome', WelcomeHandler),
     ('/newpost', NewPostHandler),
-    ('/(\d+)', PostHandler)],
-    debug=True)
+    ('/(\d+)', PostHandler)], debug=True)

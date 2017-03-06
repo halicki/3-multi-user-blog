@@ -1,0 +1,8 @@
+<article class="post">
+  <div class="post-heading row align-items-baseline">
+    <div class="post-author col col-auto col-md">{{ bp.author.username }}</div>
+    <div class="post-date col col-md-auto">{{ bp.created.strftime("%Y.%m.%d %H:%M") }}</div>
+    <a class="post-title col-12 col-md-auto flex-md-first" href="{{ bp.key().id() }}">{{ bp.title }}</a>
+  </div>
+  <div>{{ bp.content }}</div>
+</article>

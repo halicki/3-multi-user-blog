@@ -1,11 +1,14 @@
 {% extends "base.html" %}
 
 {% block title %}Main page{% endblock %}
+{% block header %}
+  <a href="newpost">New post</a>
+  <a href="logout">Logout</a>
+{% endblock %}
 {% block content %}
   {% if blog_posts %}
     {% for bp in blog_posts %}
-      <h2>{{ bp.title }}</h2>
-      <pre>{{ bp.content }}</pre>
+      {{ bp.render()|safe }}
     {% endfor %}
   {% endif %}
 {% endblock %}

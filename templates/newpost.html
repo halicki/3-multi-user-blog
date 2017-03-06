@@ -1,18 +1,19 @@
 {% extends "base.html" %}
 
 {% block title %}Create a new blog post{% endblock %}
+{% block header %}<a href="/">Cancel</a>{% endblock %}
 {% block content %}
-<h1>Create a new blog post</h1>
+<h2>Create a new blog post</h2>
 <form method="post">
-  <label>
-    <div>title</div>
-    <input type="text" name="subject" value="{{ title }}">
-  </label>
-  <label>
-    <div>content</div>
-    <textarea name="content">{{ content }}</textarea>
-  </label>
-  <input type="submit" style="display: block">
+  <div class="form-group">
+    <label>title</label>
+    <input class="form-control" type="text" name="subject" value="{{ title }}">
+  </div>
+  <div class="form-group">
+    <label>content</label>
+    <textarea class="form-control" name="content">{{ content }}</textarea>
+  </div>
+  <input class="btn btn-primary" type="submit" style="display: block">
   <div class="error">{{ error }}</div>
 </form>
 {% endblock %}
