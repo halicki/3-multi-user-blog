@@ -2,16 +2,24 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <link rel="stylesheet" type="text/css" href="/static/main.css">
-  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-alpha.6/css/bootstrap.min.css" integrity="sha384-rwoIResjU2yc3z8GV/NPeZWAv56rSmLldC3R/AZzGRnGxQQKnKkoFVhFQhNUwEyJ" crossorigin="anonymous">
   <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-  <title>{% block title %}{% endblock %} - Arek Blog</title>
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-alpha.6/css/bootstrap.min.css" integrity="sha384-rwoIResjU2yc3z8GV/NPeZWAv56rSmLldC3R/AZzGRnGxQQKnKkoFVhFQhNUwEyJ" crossorigin="anonymous">
+  <link rel="stylesheet" type="text/css" href="/static/main.css">
+  <title>{% block title %}{% endblock %} - Almost Medium</title>
 </head>
 <body class="container">
   <header class="row">
-    <a class="main-title col" href="/">Arek Blog</a>
+    <a class="main-title col" href="/">Almost Medium</a>
     <div class="col col-auto">
-      {% block header %}{% endblock %}
+      {% block header %}
+        {% if user %}
+          <span>{{ user.username }}</span>
+          <a href="/logout">Logout</a>
+        {% else %}
+          <a href="/login">Login</a>
+          <a href="/signup">Sign Up</a>
+        {% endif %}
+      {% endblock %}
     </div>
   </header>
 

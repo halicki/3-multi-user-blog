@@ -1,7 +1,6 @@
 {% extends "base.html" %}
 
 {% block title %}{{ blog_post.title }}{% endblock %}
-{% block header %}{% endblock %}
 {% block content %}
-  {{ blog_post.render()|safe }}
+  {{ blog_post.render(user=user)|safe }}
 {% endblock %}

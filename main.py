@@ -20,6 +20,7 @@ import hashlib
 import hmac
 import random
 import string
+import time
 from google.appengine.ext import db
 
 
@@ -41,7 +42,7 @@ class Handler(webapp2.RequestHandler):
         self.response.out.write(*args, **kwargs)
 
     def render(self, template, **kwargs):
-        self.write(self.render_str(template, **kwargs))
+        self.write(self.render_str(template, user=self.logged_user, **kwargs))
 
     def read_cookie(self, name):
         cookie = self.request.cookies.get(name)
@@ -209,8 +210,13 @@ class BlogPost(db.Model):
     content = db.TextProperty(required=True)
     created = db.DateTimeProperty(auto_now_add=True)
 
-    def render(self):
-        return jinja_env.get_template("blogpost.html").render(bp=self)
+    def get_likes(self):
+        return Like.all().filter('post =', self).fetch(None)
+
+    def render(self, **kwargs):
+        likes = Like.all().filter('post =', self).fetch(None)
+        template = jinja_env.get_template("blogpost.html")
+        return template.render(bp=self, likes=self.get_likes(), **kwargs)
 
 
 class MainHandler(Handler):
@@ -219,12 +225,6 @@ class MainHandler(Handler):
                                 'ORDER BY created DESC '
                                 'LIMIT 10')
         self.render('main.html', blog_posts=blog_posts)
-
-
-class PostHandler(Handler):
-    def get(self, blog_post_id):
-        blog_post = BlogPost.get_by_id(int(blog_post_id))
-        self.render('post.html', blog_post=blog_post)
 
 
 class NewPostHandler(Handler):
@@ -251,11 +251,49 @@ class NewPostHandler(Handler):
                                  "Provide both, the title and content")
 
 
+class PostHandler(Handler):
+    def get(self, blog_post_id):
+        blog_post = BlogPost.get_by_id(int(blog_post_id))
+        self.render('post.html', blog_post=blog_post)
+
+
+class Like(db.Model):
+    post = db.ReferenceProperty(BlogPost)
+    author = db.ReferenceProperty(User)
+    clicked_on = db.DateTimeProperty(auto_now_add=True)
+
+
+class LikeHandler(Handler):
+    def get(self, blog_post_id):
+        self.redirect('/posts/{}'.format(blog_post_id))
+
+    def toggle(self, blog_post):
+        like = next((like for like in blog_post.get_likes()
+                    if like.author.username == self.logged_user.username), None)
+        if like:
+            like.delete()
+        else:
+            Like(post=blog_post, author=self.logged_user).put()
+
+    def post(self, blog_post_id):
+        if not self.logged_user:
+            self.redirect('/signup')
+        else:
+            bp = BlogPost.get_by_id(int(blog_post_id))
+            if not bp:
+                self.redirect('/')
+            else:
+                self.toggle(bp)
+                time.sleep(0.1)
+                self.redirect('/posts/{}'.format(blog_post_id))
+
+
 app = webapp2.WSGIApplication([
     ('/?', MainHandler),
     ('/signup', SignUpHandler),
     ('/login', LoginHandler),
     ('/logout', LogoutHandler),
     ('/welcome', WelcomeHandler),
-    ('/newpost', NewPostHandler),
-    ('/(\d+)', PostHandler)], debug=True)
+    ('/posts/new', NewPostHandler),
+    ('/posts/(\d+)/?', PostHandler),
+    ('/posts/(\d+)/likes', LikeHandler)], debug=True)

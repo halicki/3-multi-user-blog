@@ -2,13 +2,13 @@
 
 {% block title %}Main page{% endblock %}
 {% block header %}
-  <a href="newpost">New post</a>
-  <a href="logout">Logout</a>
+  {{ super() }}
+  <a href="/posts/new">NewPost</a>
 {% endblock %}
 {% block content %}
   {% if blog_posts %}
     {% for bp in blog_posts %}
-      {{ bp.render()|safe }}
+      {{ bp.render(user=user)|safe }}
     {% endfor %}
   {% endif %}
 {% endblock %}
