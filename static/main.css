@@ -79,10 +79,17 @@ label + label {
 }
 
 header {
-  margin: 30px 0;
   align-items: baseline;
 }
 
 .input-group-addon {
   font-size: 14px;
+}
+
+textarea {
+  height: 40vh;
+}
+
+.fa {
+
 }

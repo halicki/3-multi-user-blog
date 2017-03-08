@@ -1,27 +1,38 @@
 <article class="post">
-  <div class="post-heading row align-items-baseline">
+  <div class="post-heading row align-items-baseline col">
     <div class="post-author col col-auto col-md">{{ bp.author.username }}</div>
     <div class="post-date col col-md-auto">{{ bp.created.strftime("%Y.%m.%d %H:%M") }}</div>
     <a class="post-title col-12 col-md-auto flex-md-first" href="/posts/{{ bp.key().id() }}">{{ bp.title }}</a>
   </div>
   <div class="post-content">{{ bp.content }}</div>
+
   <div class="btn-toolbar" role="toolbar" aria-label="Toolbar with action buttons">
     <form method="post" action="/posts/{{ bp.key().id() }}/likes">
-      <div class="input-group">
+      <div class="input-group mr-2" >
         <p class="input-group-addon">{{ likes|length }}</p>
         <div class="input-group-btn">
-          <button class="btn btn-sm btn-secondary" type="submit"
-                  {% if user.username == bp.author.username %}
-                    disabled
-                  {% endif %}>
+          <button class="btn btn-default" type="submit"
+                  {% if user.username == bp.author.username %}disabled{% endif %}>
             {% if user.username in likes|map(attribute='author')|map(attribute='username') %}
-              Unlike
+              <i class="fa fa-thumbs-down pr-2" aria-hidden="true"></i>Unlike
             {% else %}
-              Like
+              <i class="fa fa-thumbs-up pr-2" aria-hidden="true"></i>Like
             {% endif %}
           </button>
         </div>
       </div>
+    </form>
+    <a href="/posts/{{ bp.key().id() }}/edit">
+      <button class="btn mr-2"
+              {% if user.username != bp.author.username %}disabled{% endif %}>
+      <i class="fa fa-pencil pr-2" aria-hidden="true"></i> Edit
+      </button>
+    </a>
+    <form method="post" action="/posts/{{ bp.key().id() }}/delete">
+      <button class="btn"
+              {% if user.username != bp.author.username %}disabled{% endif %}>
+        <i class="fa fa-trash pr-2" aria-hidden="true"></i> Delete
+      </button>
     </form>
   </div>
 </article>

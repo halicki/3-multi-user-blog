@@ -1,16 +1,5 @@
-# Copyright 2016 Google Inc.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+#!/usr/bin/env python2
+# -*- coding=UTF-8
 
 import jinja2
 import webapp2
@@ -68,6 +57,26 @@ class Handler(webapp2.RequestHandler):
     def logout_user(self):
         self.clear_cookie('user_id')
 
+    @staticmethod
+    def require_login(func):
+        def method_wrapper(self, *args, **kwargs):
+            if not self.logged_user:
+                self.redirect('/signup')
+            else:
+                func(self, *args, **kwargs)
+        return method_wrapper
+
+    @staticmethod
+    def only_blogpost_owner_allowed(func):
+        def method_wrapper(self, blog_post_id, *args, **kwargs):
+            blog_post = BlogPost.from_string_id(blog_post_id)
+            if blog_post.author.key() != self.logged_user.key():
+                # TODO: PRODUCE A WARNING MESSAGE
+                self.redirect('/')
+            else:
+                func(self, blog_post_id, *args, **kwargs)
+        return method_wrapper
+
 
 class User(db.Model):
     username = db.StringProperty(required=True)
@@ -82,7 +91,6 @@ def hash_str(s):
 
 def make_secure_val(s):
     return "{}|{}".format(s, hash_str(s))
-
 
 def check_secure_val(h):
     val = h.split('|', 1)[0]
@@ -197,11 +205,9 @@ class LogoutHandler(Handler):
 
 
 class WelcomeHandler(Handler):
+    @Handler.require_login
     def get(self):
-        if not self.logged_user:
-            self.redirect('signup')
-        else:
-            self.render('welcome.html', username=self.logged_user.username)
+        self.render('welcome.html', username=self.logged_user.username)
 
 
 class BlogPost(db.Model):
@@ -210,33 +216,46 @@ class BlogPost(db.Model):
     content = db.TextProperty(required=True)
     created = db.DateTimeProperty(auto_now_add=True)
 
+    @classmethod
+    def from_string_id(cls, blog_post_id):
+        return BlogPost.get_by_id(int(blog_post_id))
+
     def get_likes(self):
-        return Like.all().filter('post =', self).fetch(None)
+        return Like.all().filter('post =', self)
 
     def render(self, **kwargs):
         likes = Like.all().filter('post =', self).fetch(None)
         template = jinja_env.get_template("blogpost.html")
-        return template.render(bp=self, likes=self.get_likes(), **kwargs)
+        return template.render(bp=self, likes=self.get_likes().fetch(20),
+                               **kwargs)
+
+    def redirect_path(self):
+        return "/posts/{}".format(str(self.key().id()))
 
 
 class MainHandler(Handler):
     def get(self):
         blog_posts = db.GqlQuery('SELECT * FROM BlogPost '
-                                'ORDER BY created DESC '
-                                'LIMIT 10')
+                                 'ORDER BY created DESC '
+                                 'LIMIT 10')
         self.render('main.html', blog_posts=blog_posts)
+
+
+class PostHandler(Handler):
+    def get(self, blog_post_id):
+        blog_post = BlogPost.from_string_id(blog_post_id)
+        self.render('post.html', blog_post=blog_post)
 
 
 class NewPostHandler(Handler):
     def render_new_post(self, title="", content="", error=""):
-        self.render('newpost.html', title=title, content=content,
-                    error=error)
+        self.render('newpost.html', title=title, content=content, error=error)
 
+    @Handler.require_login
     def get(self):
-        if not self.logged_user:
-            self.redirect("signup")
         self.render_new_post()
 
+    @Handler.require_login
     def post(self):
         title = self.request.get('subject')
         content = self.request.get('content')
@@ -245,16 +264,10 @@ class NewPostHandler(Handler):
             blog_post = BlogPost(title=title, content=content,
                                  author=self.logged_user.key())
             blog_post.put()
-            self.redirect(str(blog_post.key().id()))
+            self.redirect(blog_post.redirect_path())
         else:
             self.render_new_post(title, content,
                                  "Provide both, the title and content")
-
-
-class PostHandler(Handler):
-    def get(self, blog_post_id):
-        blog_post = BlogPost.get_by_id(int(blog_post_id))
-        self.render('post.html', blog_post=blog_post)
 
 
 class Like(db.Model):
@@ -264,28 +277,62 @@ class Like(db.Model):
 
 
 class LikeHandler(Handler):
-    def get(self, blog_post_id):
-        self.redirect('/posts/{}'.format(blog_post_id))
-
     def toggle(self, blog_post):
-        like = next((like for like in blog_post.get_likes()
-                    if like.author.username == self.logged_user.username), None)
+        like = blog_post.get_likes().filter('author =', self.logged_user).get()
         if like:
             like.delete()
         else:
             Like(post=blog_post, author=self.logged_user).put()
 
+    @Handler.require_login
     def post(self, blog_post_id):
-        if not self.logged_user:
-            self.redirect('/signup')
+        bp = BlogPost.get_by_id(int(blog_post_id))
+        if not bp:
+            self.redirect('/')
         else:
-            bp = BlogPost.get_by_id(int(blog_post_id))
-            if not bp:
-                self.redirect('/')
-            else:
-                self.toggle(bp)
-                time.sleep(0.1)
-                self.redirect('/posts/{}'.format(blog_post_id))
+            self.toggle(bp)
+            time.sleep(0.1)
+            self.redirect('/posts/{}'.format(blog_post_id))
+
+
+class EditPostHandler(Handler):
+    @Handler.require_login
+    def render_edited_post(self, title="", content="", error=""):
+        self.render('newpost.html', title=title, content=content, error=error)
+
+    @Handler.require_login
+    @Handler.only_blogpost_owner_allowed
+    def get(self, blog_post_id):
+        blog_post = BlogPost.from_string_id(blog_post_id)
+        # TODO: Check if a good id was provided.
+        self.render_edited_post(title=blog_post.title,
+                                content=blog_post.content)
+
+    @Handler.require_login
+    def post(self, blog_post_id):
+        title = self.request.get('subject')
+        content = self.request.get('content')
+
+        if title and content:
+            blog_post = BlogPost.from_string_id(blog_post_id)
+            blog_post.title = title
+            blog_post.content = content
+            blog_post.put()
+            self.redirect(blog_post.redirect_path())
+        else:
+            self.render_edited_post(title, content,
+                                    "Provide both, the title and content")
+
+
+class DeletePostHandler(Handler):
+    @Handler.require_login
+    @Handler.only_blogpost_owner_allowed
+    def post(self, blog_post_id):
+        blog_post = BlogPost.from_string_id(blog_post_id)
+        if blog_post.author.key() == self.logged_user.key():
+            blog_post.delete()
+            time.sleep(0.1)
+            self.redirect('/')
 
 
 app = webapp2.WSGIApplication([
@@ -296,4 +343,7 @@ app = webapp2.WSGIApplication([
     ('/welcome', WelcomeHandler),
     ('/posts/new', NewPostHandler),
     ('/posts/(\d+)/?', PostHandler),
-    ('/posts/(\d+)/likes', LikeHandler)], debug=True)
+    ('/posts/(\d+)/likes', LikeHandler),
+    ('/posts/(\d+)/edit', EditPostHandler),
+    ('/posts/(\d+)/delete', DeletePostHandler)
+], debug=True)
