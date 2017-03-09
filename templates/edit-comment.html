@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block title %}Edit a comment{% endblock %}
+{% block header %}<a href="/">Cancel</a>{% endblock %}
+{% block content %}
+<h2>Edit a comment</h2>
+<form method="post">
+  <div class="form-group">
+    <label>Your comment content</label>
+    <textarea class="form-control" name="content">{{ content }}</textarea>
+  </div>
+  <input class="btn btn-primary btn-block" type="submit">
+  <div class="error">{{ error }}</div>
+</form>
+{% endblock %}

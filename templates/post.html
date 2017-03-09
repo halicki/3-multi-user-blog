@@ -2,5 +2,17 @@
 
 {% block title %}{{ blog_post.title }}{% endblock %}
 {% block content %}
-  {{ blog_post.render(user=user)|safe }}
+  <div class="post">
+    {{ blog_post.render(user=user,comments=comments)|safe }}
+    {% if comments %}
+      <div class="comments">
+        Comments:
+        <div class="comments-list">
+          {% for comment in comments %}
+           {{ comment.render()|safe }}
+          {% endfor %}
+         </div>
+      {% endif %}
+    </div>
+  </div>
 {% endblock %}

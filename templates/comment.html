@@ -1,0 +1,10 @@
+{% if comment %}
+<article class="comment">
+    <p class="comment-adnotation">
+        User: {{ comment.author.username }} on: {{ comment.created }} wrote:
+    </p>
+    <section class="comment-content">
+        {{ comment.content }}
+    </section>
+</article>
+{% endif %}

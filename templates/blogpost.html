@@ -2,12 +2,13 @@
   <div class="post-heading row align-items-baseline col">
     <div class="post-author col col-auto col-md">{{ bp.author.username }}</div>
     <div class="post-date col col-md-auto">{{ bp.created.strftime("%Y.%m.%d %H:%M") }}</div>
-    <a class="post-title col-12 col-md-auto flex-md-first" href="/posts/{{ bp.key().id() }}">{{ bp.title }}</a>
+    <a class="post-title col-12 col-md-auto flex-md-first"
+       href="/posts/{{ bp.key().id() }}/">{{ bp.title }}</a>
   </div>
   <div class="post-content">{{ bp.content }}</div>
 
   <div class="btn-toolbar" role="toolbar" aria-label="Toolbar with action buttons">
-    <form method="post" action="/posts/{{ bp.key().id() }}/likes">
+    <form method="post" action="{{ bp.uri_for('post-likes') }}">
       <div class="input-group mr-2" >
         <p class="input-group-addon">{{ likes|length }}</p>
         <div class="input-group-btn">
@@ -18,6 +19,16 @@
             {% else %}
               <i class="fa fa-thumbs-up pr-2" aria-hidden="true"></i>Like
             {% endif %}
+          </button>
+        </div>
+      </div>
+    </form>
+    <form method="get" action="{{ bp.uri_for('post-comments') }}">
+      <div class="input-group mr-2" >
+        <p class="input-group-addon">{{ comments|count }}</p>
+        <div class="input-group-btn">
+          <button class="btn btn-default" type="submit">
+            <i class="fa fa-comment pr-2" aria-hidden="true"></i>Comment
           </button>
         </div>
       </div>
@@ -33,6 +44,7 @@
               {% if user.username != bp.author.username %}disabled{% endif %}>
         <i class="fa fa-trash pr-2" aria-hidden="true"></i> Delete
       </button>
+
     </form>
   </div>
 </article>
