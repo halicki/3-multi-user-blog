@@ -23,9 +23,9 @@
         </div>
       </div>
     </form>
-    <form method="get" action="{{ bp.uri_for('post-comments') }}">
+    <form method="get" action="{{ bp.uri_for('post-new-comment') }}">
       <div class="input-group mr-2" >
-        <p class="input-group-addon">{{ comments|count }}</p>
+        <p class="input-group-addon">{{ comments_count }}</p>
         <div class="input-group-btn">
           <button class="btn btn-default" type="submit">
             <i class="fa fa-comment pr-2" aria-hidden="true"></i>Comment
@@ -33,18 +33,18 @@
         </div>
       </div>
     </form>
-    <a href="/posts/{{ bp.key().id() }}/edit">
+    <a href="{{ bp.uri_for('post-edit') }}">
       <button class="btn mr-2"
               {% if user.username != bp.author.username %}disabled{% endif %}>
       <i class="fa fa-pencil pr-2" aria-hidden="true"></i> Edit
       </button>
     </a>
-    <form method="post" action="/posts/{{ bp.key().id() }}/delete">
+    <form method="post"
+          action="{{ bp.uri_for('post-delete') }}">
       <button class="btn"
               {% if user.username != bp.author.username %}disabled{% endif %}>
         <i class="fa fa-trash pr-2" aria-hidden="true"></i> Delete
       </button>
-
     </form>
   </div>
 </article>

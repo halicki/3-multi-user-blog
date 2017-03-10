@@ -55,7 +55,7 @@ class Handler(webapp2.RequestHandler):
     def initialize(self, *a, **kw):
         super(Handler, self).initialize(*a, **kw)
         uid = self.read_cookie('user_id')
-        self.user = uid and User.get_by_id(int(uid))
+        self.user = uid and uid.isdigit() and User.get_by_id(int(uid))
 
     def login_user(self, user_key):
         self.set_cookie('user_id', str(user_key.id()))
@@ -67,7 +67,7 @@ class Handler(webapp2.RequestHandler):
     def require_login(func):
         def method_wrapper(self, *args, **kwargs):
             if not self.user:
-                self.uri_for('/signup')
+                self.redirect(webapp2.uri_for('signup'))
             else:
                 func(self, *args, **kwargs)
         return method_wrapper
@@ -226,7 +226,7 @@ class BlogPost(db.Model):
     def render(self, **kwargs):
         likes = Like.all().filter('post =', self).fetch(None)
         template = jinja_env.get_template("blogpost.html")
-        return template.render(bp=self, likes=self.get_likes().fetch(20),
+        return template.render(bp=self, likes=self.get_likes().fetch(None),
                                **kwargs)
 
     def uri_for(self, action='post-view'):
@@ -238,7 +238,9 @@ class MainHandler(Handler):
         blog_posts = db.GqlQuery('SELECT * FROM BlogPost '
                                  'ORDER BY created DESC '
                                  'LIMIT 10')
-        self.render('main.html', blog_posts=blog_posts)
+        comments_counts = [Comment.gql('WHERE blog_post = :1', bp).count()
+                           for bp in blog_posts]
+        self.render('main.html', data=zip(blog_posts, comments_counts))
 
 
 class NewPostHandler(Handler):
@@ -278,8 +280,9 @@ class ValidBlogPostIDHandler(Handler):
     def require_blog_post_author(func):
         def method_wrapper(self, *args, **kwargs):
             if self.blog_post.author.key() != self.user.key():
-                # TODO: PRODUCE A WARNING MESSAGE
-                self.uri_for('/')
+                self.render('main.html',
+                            error='Wait a minute! You are not allowed to '
+                                  'edit other people posts!')
             else:
                 func(self, *args, **kwargs)
         return method_wrapper
@@ -287,9 +290,10 @@ class ValidBlogPostIDHandler(Handler):
 
 class ViewPostHandler(ValidBlogPostIDHandler):
     def get(self):
-        coms = Comment.gql('WHERE blog_post = :1 '
-                           'ORDER BY created DESC', self.blog_post).fetch(None)
-        self.render('post.html', blog_post=self.blog_post, comments=coms)
+        comments = Comment.gql('WHERE blog_post = :1 '
+                               'ORDER BY created DESC',
+                               self.blog_post).fetch(None)
+        self.render('post.html', blog_post=self.blog_post, comments=comments)
 
 
 class Like(db.Model):
@@ -358,6 +362,11 @@ class Comment(db.Model):
     def render(self):
         return jinja_env.get_template('comment.html').render(comment=self)
 
+    def uri_for(self, action='comment-edit'):
+        return webapp2.uri_for(action,
+                               post=str(self.blog_post.key().id()),
+                               comment=str(self.key().id()))
+
 
 class CommentHandler(ValidBlogPostIDHandler):
     def _render(self, *args, **kwargs):
@@ -381,6 +390,60 @@ class CommentHandler(ValidBlogPostIDHandler):
             self._render(error="Please provide content.")
 
 
+class ValidCommentIDHandler(ValidBlogPostIDHandler):
+    comment = None
+
+    def initialize(self, *a, **kw):
+        super(ValidCommentIDHandler, self).initialize(*a, **kw)
+        comment_id = self.request.route_kwargs.pop('comment')
+        self.comment = Comment.get_by_id(int(comment_id))
+        if not self.blog_post:
+            self.abort(404)
+
+    @staticmethod
+    def require_comment_author(func):
+        def method_wrapper(self, *args, **kwargs):
+            if self.comment.author.key() != self.user.key():
+                self.render('main.html',
+                            error='You are not allowed to edit/delete other '
+                                  'peoples posts!')
+            else:
+                func(self, *args, **kwargs)
+        return method_wrapper
+
+
+class EditCommentHandler(ValidCommentIDHandler):
+    def _render(self, *args, **kwargs):
+        self.render('edit-comment.html', *args, **kwargs)
+
+    @Handler.require_login
+    @ValidCommentIDHandler.require_comment_author
+    def get(self):
+        self._render(content=self.comment.content)
+
+    @Handler.require_login
+    @ValidCommentIDHandler.require_comment_author
+    def post(self):
+        content = self.request.get('content')
+
+        if content:
+            self.comment.content = content
+            self.comment.put()
+            time.sleep(0.1)
+            self.redirect(self.blog_post.uri_for())
+        else:
+            self._render(error="Please provide content.")
+
+
+class DeleteCommentHandler(ValidCommentIDHandler):
+    @Handler.require_login
+    @ValidCommentIDHandler.require_comment_author
+    def post(self):
+        self.comment.delete()
+        time.sleep(0.1)
+        self.redirect(self.blog_post.uri_for())
+
+
 app = webapp2.WSGIApplication([
     Route(r'/', MainHandler, 'main'),
     Route(r'/signup', SignUpHandler, 'signup'),
@@ -389,10 +452,14 @@ app = webapp2.WSGIApplication([
     Route(r'/welcome', WelcomeHandler, 'welcome'),
     Route(r'/new-post', NewPostHandler, 'new-post'),
     routes.PathPrefixRoute(r'/posts/<post:\d+>', [
-        Route('/', ViewPostHandler, 'post-view'),
-        Route('/likes', LikeHandler, 'post-likes'),
-        Route('/edit', EditPostHandler, 'post-edit'),
-        Route('/delete', DeletePostHandler, 'post-delete'),
-        Route('/comments', CommentHandler, 'post-comments')
+        Route(r'/', ViewPostHandler, 'post-view'),
+        Route(r'/likes', LikeHandler, 'post-likes'),
+        Route(r'/edit', EditPostHandler, 'post-edit'),
+        Route(r'/delete', DeletePostHandler, 'post-delete'),
+        Route(r'/new-comment', CommentHandler, 'post-new-comment'),
+        routes.PathPrefixRoute(r'/comments/<comment:\d+>', [
+            Route(r'/edit', EditCommentHandler, 'comment-edit'),
+            Route(r'/delete', DeleteCommentHandler, 'comment-delete')
+        ])
     ])
 ], debug=True)

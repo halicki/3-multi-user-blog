@@ -1,10 +1,20 @@
 {% if comment %}
 <article class="comment">
-    <p class="comment-adnotation">
-        User: {{ comment.author.username }} on: {{ comment.created }} wrote:
-    </p>
-    <section class="comment-content">
-        {{ comment.content }}
-    </section>
+  <p class="comment-adnotation">
+    User: {{ comment.author.username }} on: {{ comment.created }}:
+  </p>
+  <div class="comment-content">
+    {{ comment.content }}
+  </div>
+  </form>
+
+  <div class="comment-options">
+    <a href="{{ comment.uri_for('comment-edit') }}">Edit</a>
+    <form id="myform" method="post" action="{{ comment.uri_for('comment-delete') }}">
+      <a href="#" onclick="document.getElementById('myform').submit();">
+        Delete
+      </a>
+    </form>
+  </div>
 </article>
 {% endif %}

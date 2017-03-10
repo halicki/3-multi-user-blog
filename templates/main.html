@@ -6,9 +6,9 @@
   <a href="/new-post">NewPost</a>
 {% endblock %}
 {% block content %}
-  {% if blog_posts %}
-    {% for bp in blog_posts %}
-      {{ bp.render(user=user)|safe }}
+  {% if data %}
+    {% for row in data %}
+      {{ row[0].render(user=user, comments_count=row[1])|safe }}
     {% endfor %}
   {% endif %}
 {% endblock %}

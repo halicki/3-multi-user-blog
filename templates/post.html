@@ -3,7 +3,8 @@
 {% block title %}{{ blog_post.title }}{% endblock %}
 {% block content %}
   <div class="post">
-    {{ blog_post.render(user=user,comments=comments)|safe }}
+    {{ blog_post.render(user=user,
+                        comments_count=comments|length)|safe }}
     {% if comments %}
       <div class="comments">
         Comments:
