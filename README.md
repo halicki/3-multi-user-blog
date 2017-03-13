@@ -72,11 +72,18 @@ Run this command to prime your google cloud tools.
 gcloud init
 ```
 
-##### Deploy this app ON THE CLOUD
+##### Deploy this app ON THE CLOUD...
 Using `gcloud` tool send all project files up to the cloud.
 ```shell
 gcloud app deploy
 gcloud app browse
+```
+
+##### ... or run locally
+Instead of previous step you can also run the app locally using the 
+`dev_appserver.py` command (installed with SDK for App Engine).
+```shell
+dev_appserver.py .
 ```
 
 ## License
