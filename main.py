@@ -7,6 +7,7 @@ import random
 import re
 import string
 import time
+
 import webapp2
 from google.appengine.ext import db
 from webapp2 import Route
@@ -95,20 +96,18 @@ def valid_pw(name, pw, h):
     return h == computed_hash
 
 
-USER_RE = re.compile(r"^[a-zA-Z0-9_-]{3,20}$")
-EMAIL_RE = re.compile(r"^[\S]+@[\S]+.[\S]+$")
-PASS_RE = re.compile(r"^.{3,20}$")
-
-
 def valid_username(username):
+    USER_RE = re.compile(r"^[a-zA-Z0-9_-]{3,20}$")
     return username and USER_RE.match(username)
 
 
 def valid_password(password):
+    PASS_RE = re.compile(r"^.{3,20}$")
     return password and PASS_RE.match(password)
 
 
 def valid_email(email):
+    EMAIL_RE = re.compile(r"^[\S]+@[\S]+.[\S]+$")
     return email and EMAIL_RE.match(email)
 
 
