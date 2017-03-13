@@ -277,15 +277,20 @@ class ValidBlogPostIDHandler(Handler):
             self.abort(404)
 
     @staticmethod
-    def require_blog_post_author(func):
-        def method_wrapper(self, *args, **kwargs):
-            if self.blog_post.author.key() != self.user.key():
-                self.render('main.html',
-                            error='Wait a minute! You are not allowed to '
-                                  'edit other people posts!')
-            else:
-                func(self, *args, **kwargs)
-        return method_wrapper
+    def set_permissions(author=True, others=False):
+        def decorator(func):
+            def method_wrapper(self, *args, **kwargs):
+                user_is_author = self.blog_post.author.key() == self.user.key()
+                if author and not user_is_author:
+                    self.render('main.html',
+                                error="That's not allowed if you aren't the author")
+                elif others and user_is_author:
+                    self.render('main.html',
+                                error="That's not allowed if you are the author")
+                else:
+                    func(self, *args, **kwargs)
+            return method_wrapper
+        return decorator
 
 
 class ViewPostHandler(ValidBlogPostIDHandler):
@@ -311,6 +316,7 @@ class LikeHandler(ValidBlogPostIDHandler):
             Like(post=self.blog_post, author=self.user).put()
 
     @Handler.require_login
+    @ValidBlogPostIDHandler.set_permissions(author=False, others=True)
     def post(self):
         self.toggle()
         time.sleep(0.1)
@@ -322,13 +328,13 @@ class EditPostHandler(ValidBlogPostIDHandler):
         self.render('edit-post.html', title=title, content=content, error=error)
 
     @Handler.require_login
-    @ValidBlogPostIDHandler.require_blog_post_author
+    @ValidBlogPostIDHandler.set_permissions
     def get(self):
         self._render_edited_post(title=self.blog_post.title,
                                  content=self.blog_post.content)
 
     @Handler.require_login
-    @ValidBlogPostIDHandler.require_blog_post_author
+    @ValidBlogPostIDHandler.set_permissions
     def post(self):
         title = self.request.get('subject')
         content = self.request.get('content')
@@ -345,7 +351,7 @@ class EditPostHandler(ValidBlogPostIDHandler):
 
 class DeletePostHandler(ValidBlogPostIDHandler):
     @Handler.require_login
-    @ValidBlogPostIDHandler.require_blog_post_author
+    @ValidBlogPostIDHandler.set_permissions
     def post(self):
         self.blog_post.delete()
         time.sleep(0.1)
