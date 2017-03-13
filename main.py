@@ -1,28 +1,19 @@
 #!/usr/bin/env python2
 # -*- coding=UTF-8
 
-import jinja2
-import webapp2
-from webapp2 import Route
-from webapp2_extras import routes
-import os
-import re
 import hashlib
 import hmac
 import random
+import re
 import string
 import time
+import webapp2
 from google.appengine.ext import db
+from webapp2 import Route
+from webapp2_extras import routes
 
-import pdb
-import pprint
-
-
-template_dir = os.path.join(os.path.dirname(__file__), 'templates')
-jinja_env = jinja2.Environment(
-    loader=jinja2.FileSystemLoader(template_dir),
-    autoescape=True
-)
+from jinja_env import jinja_env
+from models import User, BlogPost, Like, Comment
 
 
 class Handler(webapp2.RequestHandler):
@@ -71,13 +62,6 @@ class Handler(webapp2.RequestHandler):
             else:
                 func(self, *args, **kwargs)
         return method_wrapper
-
-
-class User(db.Model):
-    username = db.StringProperty(required=True)
-    pw_hash = db.StringProperty(required=True)
-    email = db.EmailProperty()
-    registered_datetime = db.DateTimeProperty(auto_now_add=True)
 
 
 def hash_str(s):
@@ -210,29 +194,6 @@ class WelcomeHandler(Handler):
         self.render('welcome.html', username=self.user.username)
 
 
-class BlogPost(db.Model):
-    author = db.ReferenceProperty(User)
-    title = db.StringProperty(required=True)
-    content = db.TextProperty(required=True)
-    created = db.DateTimeProperty(auto_now_add=True)
-
-    @classmethod
-    def from_string_id(cls, blog_post_id):
-        return BlogPost.get_by_id(int(blog_post_id))
-
-    def get_likes(self):
-        return Like.all().filter('post =', self)
-
-    def render(self, **kwargs):
-        likes = Like.all().filter('post =', self).fetch(None)
-        template = jinja_env.get_template("blogpost.html")
-        return template.render(bp=self, likes=self.get_likes().fetch(None),
-                               **kwargs)
-
-    def uri_for(self, action='post-view'):
-        return webapp2.uri_for(action, post=str(self.key().id()))
-
-
 class MainHandler(Handler):
     def get(self):
         blog_posts = db.GqlQuery('SELECT * FROM BlogPost '
@@ -301,12 +262,6 @@ class ViewPostHandler(ValidBlogPostIDHandler):
         self.render('post.html', blog_post=self.blog_post, comments=comments)
 
 
-class Like(db.Model):
-    post = db.ReferenceProperty(BlogPost)
-    author = db.ReferenceProperty(User)
-    clicked_on = db.DateTimeProperty(auto_now_add=True)
-
-
 class LikeHandler(ValidBlogPostIDHandler):
     def toggle(self):
         like = self.blog_post.get_likes().filter('author =', self.user).get()
@@ -356,22 +311,6 @@ class DeletePostHandler(ValidBlogPostIDHandler):
         self.blog_post.delete()
         time.sleep(0.1)
         self.redirect('/')
-
-
-class Comment(db.Model):
-    blog_post = db.ReferenceProperty(BlogPost)
-    author = db.ReferenceProperty(User)
-    content = db.TextProperty(required=True)
-    created = db.DateTimeProperty(required=True, auto_now_add=True)
-    modified = db.DateTimeProperty(auto_now=True)
-
-    def render(self):
-        return jinja_env.get_template('comment.html').render(comment=self)
-
-    def uri_for(self, action='comment-edit'):
-        return webapp2.uri_for(action,
-                               post=str(self.blog_post.key().id()),
-                               comment=str(self.key().id()))
 
 
 class CommentHandler(ValidBlogPostIDHandler):
